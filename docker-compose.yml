@@ -1,0 +1,111 @@
+version: "3"
+   
+services:
+  web: # any name
+    build: 
+      context: backend
+      dockerfile: dockerfile
+    container_name: backend
+    command: >
+     sh -c "python manage.py makemigrations &&
+            python manage.py migrate &&
+            gunicorn -k uvicorn.workers.UvicornWorker drug_store.asgi:application --bind 0.0.0.0:5000"
+    volumes:
+      - ./src:/webproject/ #get the real-time updates that we makes it to the project into the image
+      - static_volume:/webproject/static
+      - media_volume:/webproject/media
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+    network_mode: host
+
+  redis: # Remote Dictionary Server.
+    image: redis:alpine
+    container_name: redis
+    volumes:
+      - redis:/data/redis
+    ports:
+      - 6379:6379
+    network_mode: host
+
+  celery:
+    container_name: celery
+    image: web:django
+    restart: always # restart container automatically if it is stopped manually or fails
+    command: celery -A drug_store worker -l INFO # get information in terminal
+    depends_on:
+      - redis
+    env_file:
+      - ./.env
+    network_mode: host
+    
+  celery-beat: 
+    container_name: celery_beat
+    image: web:django
+    restart: always
+    command: celery -A drug_store beat -l INFO
+    env_file:
+      - ./.env
+    depends_on:
+      - celery
+    network_mode: host
+
+  flower:
+    image: mher/flower
+    container_name: flower
+    command: celery flower --url-prefix=flower --auth=motasemalmobayyed@gmail.com --persisten=True 
+    # persist our data in flower so that it didn’t go away on every restart of container 
+    ports:
+      - 5555:5555
+    env_file:
+      - ./.env
+    depends_on:
+      - celery
+    network_mode: host
+    
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: always
+    ports:
+      - 9090:9090
+    volumes:
+      - ./monitor.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - nginx-exporter
+    network_mode: host
+
+  nginx:
+    build: nginx
+    container_name: nginx
+    ports:
+      - 5050:80
+    depends_on:
+      - flower
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_volume:/static
+      - media_volume:/media
+    network_mode: host
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx_exporter
+    ports:
+      - 9113:9113
+    command: 
+      - -nginx.scrape-uri
+      - http://localhost/metrics/
+    depends_on:
+      - nginx
+    network_mode: host  
+
+
+volumes:
+  redis:
+  web:
+  static_volume:
+  media_volume:

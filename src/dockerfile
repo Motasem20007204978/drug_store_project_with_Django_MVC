@@ -1,0 +1,17 @@
+# python alpine version to make image size as small as possible
+FROM python:3.10-alpine
+
+# prevent writing pyc files
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# prevent buffering stdout and stderr
+ENV PYTHONUNBUFFERED=1
+
+
+WORKDIR /webproject
+
+COPY . /webproject/
+
+# install packages in the file
+RUN  pip install -U pip \
+         pip install -r /webproject/requirements.txt
